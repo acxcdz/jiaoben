@@ -1,0 +1,343 @@
+// ==UserScript==
+// @name         全平台视频全屏大师Pro（稳定优化版）
+// @namespace    http://tampermonkey.net/
+// @version      2.0
+// @description  智能全屏控制，支持动态定位与智能隐藏，优化全屏图标UI，解决重复显示和遮挡问题
+// @match        *://*.douyin.com/*
+// @grant        GM_addStyle
+// @grant        GM_registerMenuCommand
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // 配置项：按钮位置、透明度、自动隐藏、图标大小、图标颜色、图标阴影
+    const CONFIG = {
+        POSITION: GM_getValue('btn_position', 'right'),
+        OPACITY: GM_getValue('btn_opacity', 0.8),
+        AUTO_HIDE: GM_getValue('auto_hide', true),
+        ICON_SIZE: GM_getValue('icon_size', '70%'),       // 图标大小（百分比，相对于按钮尺寸）
+        ICON_COLOR: GM_getValue('icon_color', '#ffffff'),  // 图标颜色
+        ICON_SHADOW: GM_getValue('icon_shadow', 'drop-shadow(0px 0px 3px rgba(0,0,0,0.6))') // 图标阴影效果
+    };
+
+    // 视频检测器类：监控页面中新增的 video 标签，并为每个视频创建控制器
+    class VideoDetector {
+        constructor() {
+            this.videoMap = new WeakMap(); // 记录已处理视频，避免重复添加
+            this.initObserver();
+        }
+
+        // 初始化 DOM 观察器，监控新增的 video 元素
+        initObserver() {
+            const observer = new MutationObserver(mutations => {
+                mutations.forEach(mutation => {
+                    mutation.addedNodes.forEach(node => {
+                        if (node.tagName === 'VIDEO') {
+                            this.processVideo(node);
+                        }
+                        if (node.querySelectorAll) {
+                            node.querySelectorAll('video').forEach(video => {
+                                this.processVideo(video);
+                            });
+                        }
+                    });
+                });
+            });
+            observer.observe(document, {
+                subtree: true,
+                childList: true
+            });
+            // 处理页面中已有的视频
+            document.querySelectorAll('video').forEach(video => {
+                this.processVideo(video);
+            });
+        }
+
+        // 对单个 video 元素进行处理，创建并初始化视频控制器
+        processVideo(video) {
+            if (!this.videoMap.has(video)) {
+                const controller = new VideoController(video);
+                this.videoMap.set(video, controller);
+                controller.init();
+            }
+        }
+    }
+
+    // 视频控制器类：负责控制全屏、按钮显示、定位与隐藏逻辑
+    class VideoController {
+        constructor(videoElement) {
+            this.video = videoElement;
+            this.container = this.findVideoContainer();
+            this.btn = null;        // 全屏控制按钮
+            this.hideTimer = null;  // 按钮自动隐藏定时器
+            this.handleFullscreenChangeBound = this.handleFullscreenChange.bind(this);
+            this.showButtonBound = this.showButton.bind(this);
+        }
+
+        // 查找视频容器，优先使用常见的播放器容器，否则使用 video 的父元素
+        findVideoContainer() {
+            return this.video.closest([
+                '.video-container',
+                '.player-wrapper',
+                '[data-video-player]',
+                'div > video:only-child'
+            ].join(',')) || this.video.parentElement;
+        }
+
+        // 初始化：设置容器定位、创建按钮、绑定事件、设置位置与样式
+        init() {
+            // 确保容器定位正确（便于绝对定位按钮显示在容器内）
+            if (window.getComputedStyle(this.container).position === 'static') {
+                this.container.style.position = 'relative';
+            }
+            this.createButton();
+            this.bindEvents();
+            this.autoPosition();
+            this.setButtonStyle();
+        }
+
+        // 创建全屏控制按钮，若已存在同类按钮则不重复创建
+        createButton() {
+            if (this.container.querySelector('.universal-fullscreen-btn')) return;
+            this.btn = document.createElement('div');
+            this.btn.className = 'universal-fullscreen-btn';
+            // 优化后的 SVG 图标，现代简洁风格
+            this.btn.innerHTML = `
+                <svg class="expand-icon" viewBox="0 0 24 24">
+                    <polyline points="4,10 4,4 10,4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="14,4 20,4 20,10" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="20,14 20,20 14,20" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="10,20 4,20 4,14" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                </svg>
+                <svg class="collapse-icon" viewBox="0 0 24 24">
+                    <polyline points="10,4 4,4 4,10" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="14,4 20,4 20,10" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="14,20 20,20 20,14" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                    <polyline points="10,20 4,20 4,14" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/>
+                </svg>
+            `;
+            this.container.appendChild(this.btn);
+        }
+
+        // 绑定交互事件，包括点击、双击、鼠标移动、窗口尺寸变化等
+        bindEvents() {
+            // 点击按钮切换全屏
+            this.btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleFullscreen();
+            });
+            // 双击视频切换全屏
+            this.video.addEventListener('dblclick', () => this.toggleFullscreen());
+
+            // 监听全屏状态变化（标准及 Webkit 前缀）
+            document.addEventListener('fullscreenchange', this.handleFullscreenChangeBound);
+            document.addEventListener('webkitfullscreenchange', this.handleFullscreenChangeBound);
+
+            // 若启用自动隐藏，则绑定鼠标移动与离开事件
+            if (CONFIG.AUTO_HIDE) {
+                this.container.addEventListener('mousemove', this.showButtonBound);
+                this.container.addEventListener('mouseleave', () => {
+                    if (!document.fullscreenElement) {
+                        this.startHideTimer();
+                    }
+                });
+                // 触摸设备支持：单点触摸时显示按钮
+                this.container.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 1) this.showButtonBound();
+                }, {passive: true});
+            }
+
+            // 全屏状态下点击容器时显示按钮
+            this.container.addEventListener('click', () => {
+                if (document.fullscreenElement) this.showButtonBound();
+            });
+
+            // 窗口尺寸变化时重新定位按钮并显示
+            window.addEventListener('resize', () => {
+                this.autoPosition();
+                this.showButtonBound();
+            });
+        }
+
+        // 切换全屏状态：若已全屏则退出，否则请求全屏
+        toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                const requestMethod = [
+                    'requestFullscreen',
+                    'webkitRequestFullscreen',
+                    'mozRequestFullScreen',
+                    'msRequestFullscreen'
+                ].find(method => this.container[method]);
+                if (requestMethod) {
+                    this.container[requestMethod]();
+                }
+            }
+        }
+
+        // 处理全屏状态变化：更新按钮位置、图标显示以及按钮透明度
+        handleFullscreenChange() {
+            this.autoPosition();
+            this.updateButtonIcon();
+            this.showButtonBound();
+            if (!document.fullscreenElement) {
+                this.btn.style.opacity = CONFIG.OPACITY;
+            }
+        }
+
+        // 根据全屏状态和容器尺寸自动调整按钮位置
+        autoPosition() {
+            const isFullscreen = document.fullscreenElement === this.container;
+            const viewportRatio = window.innerWidth / window.innerHeight;
+            if (isFullscreen) {
+                this.btn.style[CONFIG.POSITION] = '20px';
+                this.btn.style.bottom = viewportRatio > 1.77 ? '20px' : '30px';
+            } else {
+                const rect = this.container.getBoundingClientRect();
+                const isVertical = rect.height > rect.width;
+                this.btn.style[CONFIG.POSITION] = '10px';
+                this.btn.style.bottom = isVertical ? '60px' : '20px';
+            }
+        }
+
+        // 设置按钮样式，优化 SVG 图标 UI：无背景、无毛玻璃，添加阴影效果，并提升层级
+        setButtonStyle() {
+            Object.assign(this.btn.style, {
+                opacity: CONFIG.OPACITY,
+                transition: 'opacity 0.3s, transform 0.2s',
+                cursor: 'pointer',
+                position: 'absolute',
+                zIndex: 99999,
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px'
+            });
+            // 设置 SVG 图标样式，允许自定义大小、颜色及阴影
+            this.btn.querySelectorAll('svg').forEach(icon => {
+                Object.assign(icon.style, {
+                    width: CONFIG.ICON_SIZE,
+                    height: CONFIG.ICON_SIZE,
+                    stroke: CONFIG.ICON_COLOR,
+                    fill: 'none',
+                    filter: CONFIG.ICON_SHADOW,
+                    transition: 'opacity 0.3s, stroke 0.3s'
+                });
+            });
+        }
+
+        // 显示按钮并清除自动隐藏定时器
+        showButton() {
+            clearTimeout(this.hideTimer);
+            this.btn.style.opacity = CONFIG.OPACITY;
+            this.updateButtonIcon();
+            if (document.fullscreenElement && CONFIG.AUTO_HIDE) {
+                this.hideTimer = setTimeout(() => {
+                    this.btn.style.opacity = '0';
+                }, 1000);
+            }
+        }
+
+        // 更新按钮图标显示状态：全屏时显示退出图标，否则显示进入图标
+        updateButtonIcon() {
+            const isFullscreen = document.fullscreenElement;
+            this.btn.querySelector('.expand-icon').style.opacity = isFullscreen ? '0' : '1';
+            this.btn.querySelector('.collapse-icon').style.opacity = isFullscreen ? '1' : '0';
+        }
+
+        // 启动自动隐藏定时器，非全屏状态下2秒后隐藏按钮
+        startHideTimer() {
+            if (!document.fullscreenElement) {
+                this.hideTimer = setTimeout(() => {
+                    this.btn.style.opacity = '0';
+                }, 2000);
+            }
+        }
+    }
+
+    // 添加全局 CSS 样式
+    GM_addStyle(`
+        .universal-fullscreen-btn {
+            transition: opacity 0.3s, transform 0.2s !important;
+            transform-origin: center;
+        }
+        .universal-fullscreen-btn:hover {
+            transform: scale(1.1);
+        }
+        :fullscreen .universal-fullscreen-btn {
+            bottom: 20px !important;
+            right: 20px !important;
+        }
+        @media (max-width: 768px) {
+            .universal-fullscreen-btn {
+                width: 40px !important;
+                height: 40px !important;
+                bottom: 70px !important;
+            }
+            :fullscreen .universal-fullscreen-btn {
+                bottom: 30px !important;
+                right: 30px !important;
+            }
+        }
+    `);
+
+    // 注册油猴菜单命令
+
+    // 设置按钮位置（left/right）
+    GM_registerMenuCommand('⚙️ 设置按钮位置', () => {
+        const pos = prompt('请输入按钮位置 (left/right):', CONFIG.POSITION);
+        if (['left', 'right'].includes(pos)) {
+            GM_setValue('btn_position', pos);
+            location.reload();
+        }
+    });
+
+    // 设置按钮透明度（0.1-1之间）
+    GM_registerMenuCommand('🎚️ 设置透明度 (0.1-1)', () => {
+        const opacity = parseFloat(prompt('请输入透明度 (0.1-1):', CONFIG.OPACITY));
+        if (!isNaN(opacity) && opacity >= 0.1 && opacity <= 1) {
+            GM_setValue('btn_opacity', opacity);
+            location.reload();
+        }
+    });
+
+    // 切换自动隐藏功能
+    GM_registerMenuCommand(`${CONFIG.AUTO_HIDE ? '🔴' : '🟢'} 自动隐藏`, () => {
+        GM_setValue('auto_hide', !CONFIG.AUTO_HIDE);
+        location.reload();
+    });
+
+    // 设置图标颜色
+    GM_registerMenuCommand('🎨 设置图标颜色', () => {
+        const color = prompt('请输入图标颜色（例如 #ffffff）:', CONFIG.ICON_COLOR);
+        if (color) {
+            GM_setValue('icon_color', color);
+            location.reload();
+        }
+    });
+
+    // 设置图标大小（百分比，相对于按钮尺寸）
+    GM_registerMenuCommand('🔧 设置图标大小 (百分比)', () => {
+        const size = prompt('请输入图标大小百分比 (例如 70%):', CONFIG.ICON_SIZE);
+        if (size) {
+            GM_setValue('icon_size', size);
+            location.reload();
+        }
+    });
+
+    // 设置图标阴影效果
+    GM_registerMenuCommand('🌑 设置图标阴影', () => {
+        const shadow = prompt('请输入图标阴影效果 (例如 drop-shadow(0px 0px 3px rgba(0,0,0,0.6))):', CONFIG.ICON_SHADOW);
+        if (shadow) {
+            GM_setValue('icon_shadow', shadow);
+            location.reload();
+        }
+    });
+
+    // 初始化视频检测器，开始监控页面中 video 元素
+    new VideoDetector();
+})();
