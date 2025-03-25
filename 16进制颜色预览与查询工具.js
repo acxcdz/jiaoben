@@ -1,18 +1,20 @@
 // ==UserScript==
-// @name         16进制颜色预览与查询工具
-// @namespace    http://tampermonkey.net/
-// @version      2.4.2
-// @description  提供16进制颜色预览、调试及全网常见颜色展示，颜色按红、粉、橙、黄、绿、青、蓝、紫、黑白、透明分组排序，支持深色/浅色/自动适应系统主题及搜索筛选功能，适配竖屏(移动端)与横屏(PC端)。
-// @author       ChatGPT
-// @match        *://*/*
-// @grant        GM_registerMenuCommand
+// @name          16进制颜色预览与查询工具
+// @namespace     https://viayoo.com/
+// @version       2.7.3.1
+// @description   提供16进制颜色预览、调试及全网常见颜色展示。支持单色和双色预览，颜色按分组排序。
+// @author        是小白呀
+// @match         *://*/*
+// @license       MIT
+// @grant         GM_registerMenuCommand
+// @grant         GM_setClipboard
+// @run-at        document-end
 // ==/UserScript==
 
 (function() {
     'use strict';
 
     // ========== 颜色分组数据 ==========
-    // 新排序：红 → 粉 → 橙 → 黄 → 绿 → 青 → 蓝 → 紫 → 黑白 → 透明
     const colorGroups = [
         {
             group: "红色 🔴",
@@ -22,7 +24,10 @@
                 { code: "#B22222", name: "火砖红" },
                 { code: "#8B0000", name: "深红" },
                 { code: "#FF4500", name: "橙红" },
-                { code: "#FF6347", name: "番茄红" }
+                { code: "#FF6347", name: "番茄红" },
+                { code: "#CD5C5C", name: "印度红" },
+                { code: "#FF6B6B", name: "浅珊瑚红" },
+                { code: "#E32636", name: "茜红" }
             ]
         },
         {
@@ -37,7 +42,9 @@
                 { code: "#DB7093", name: "淡玫瑰色" },
                 { code: "#FF007F", name: "玫瑰红" },
                 { code: "#FA8072", name: "鲑鱼粉" },
-                { code: "#B0C7E2", name: "灰雾蓝粉" }
+                { code: "#B0C7E2", name: "灰雾蓝粉" },
+                { code: "#FF99CC", name: "泡泡糖粉" },
+                { code: "#FF77FF", name: "霓虹粉" }
             ]
         },
         {
@@ -45,7 +52,10 @@
             colors: [
                 { code: "#FFA500", name: "橙色" },
                 { code: "#FF8C00", name: "深橙" },
-                { code: "#FF7F50", name: "珊瑚橙" }
+                { code: "#FF7F50", name: "珊瑚橙" },
+                { code: "#FFA07A", name: "浅橙" },
+                { code: "#FFDAB9", name: "桃橙" },
+                { code: "#FF8243", name: "芒果橙" }
             ]
         },
         {
@@ -57,7 +67,9 @@
                 { code: "#FFFACD", name: "柠檬绸" },
                 { code: "#F0E68C", name: "卡其色" },
                 { code: "#FFE4B5", name: "鹿皮色" },
-                { code: "#FFDAB9", name: "桃色" }
+                { code: "#FFDAB9", name: "桃色" },
+                { code: "#FADA5E", name: "玉米黄" },
+                { code: "#FFDB58", name: "芥末黄" }
             ]
         },
         {
@@ -66,14 +78,16 @@
                 { code: "#008000", name: "绿色" },
                 { code: "#00FF00", name: "酸橙绿" },
                 { code: "#228B22", name: "森林绿" },
-                { code: "#32CD32", name: "酸橙绿 (LimeGreen)" },
+                { code: "#98FB98", name: "苍绿色" },
                 { code: "#90EE90", name: "淡绿色" },
                 { code: "#3CB371", name: "海洋绿" },
                 { code: "#2E8B57", name: "海绿" },
                 { code: "#006400", name: "深绿色" },
                 { code: "#00FF7F", name: "春绿" },
                 { code: "#C7EDCC", name: "豆沙绿" },
-                { code: "#98FB98", name: "苍绿色" }
+                { code: "#32CD32", name: "酸橙绿 (LimeGreen)" },
+                { code: "#9ACD32", name: "黄绿" },
+                { code: "#556B2F", name: "橄榄绿" }
             ]
         },
         {
@@ -85,7 +99,9 @@
                 { code: "#48D1CC", name: "中绿松石" },
                 { code: "#00CED1", name: "暗绿松石" },
                 { code: "#7FFFD4", name: "水绿宝石" },
-                { code: "#AFEEEE", name: "碧绿色" }
+                { code: "#AFEEEE", name: "碧绿色" },
+                { code: "#00FFEF", name: "电青色" },
+                { code: "#20B2AA", name: "浅海洋绿" }
             ]
         },
         {
@@ -101,7 +117,9 @@
                 { code: "#ADD8E6", name: "淡蓝色" },
                 { code: "#B0E0E6", name: "粉蓝" },
                 { code: "#191970", name: "午夜蓝" },
-                { code: "#000080", name: "藏青色" }
+                { code: "#000080", name: "藏青色" },
+                { code: "#6A5ACD", name: "石板蓝" },
+                { code: "#7B68EE", name: "中石板蓝" }
             ]
         },
         {
@@ -118,16 +136,19 @@
                 { code: "#8B008B", name: "暗品红" },
                 { code: "#4B0082", name: "靛蓝" },
                 { code: "#BA55D3", name: "中兰花紫" },
-                { code: "#D8BFD8", name: "蓟色" }
+                { code: "#D8BFD8", name: "蓟色" },
+                { code: "#E6E6FA", name: "薰衣草紫" } // 新增
             ]
         },
         {
             group: "黑白 ⚫⚪",
             colors: [
                 { code: "#000000", name: "黑色" },
-                { code: "#808080", name: "灰色" },
+                { code: "#FFFFFF", name: "白色" },
                 { code: "#C0C0C0", name: "银色" },
-                { code: "#FFFFFF", name: "白色" }
+                { code: "#808080", name: "灰色" },
+                { code: "#D3D3D3", name: "浅灰" },
+                { code: "#A9A9A9", name: "暗灰" }
             ]
         },
         {
@@ -135,16 +156,35 @@
             colors: [
                 { code: "#00000000", name: "透明黑" },
                 { code: "#FFFFFF00", name: "透明白" },
-                { code: "#00000080", name: "半透明黑" }
+                { code: "#00000080", name: "半透明黑" },
+                { code: "#FF000080", name: "半透明红" },
+                { code: "#00FF0080", name: "半透明绿" }
+            ]
+        },
+        {
+            group: "棕色系 🟤",
+            colors: [
+                { code: "#A52A2A", name: "棕色" },
+                { code: "#8B4513", name: "马鞍棕" },
+                { code: "#D2691E", name: "巧克力棕" },
+                { code: "#CD853F", name: "秘鲁棕" },
+                { code: "#DEB887", name: "陶土棕" }
             ]
         }
     ];
 
-    // 将颜色映射成 { "#XXXXXX": "名称" } 结构，供调试功能快速查找
+    // 累积颜色映射，不去除重复，名称以 " / " 分隔
     const colorMapping = {};
     colorGroups.forEach(group => {
         group.colors.forEach(item => {
-            colorMapping[item.code.toUpperCase()] = item.name;
+            const upperCode = item.code.toUpperCase();
+            if (colorMapping[upperCode]) {
+                if (!colorMapping[upperCode].includes(item.name)) {
+                    colorMapping[upperCode] += " / " + item.name;
+                }
+            } else {
+                colorMapping[upperCode] = item.name;
+            }
         });
     });
 
@@ -177,7 +217,6 @@
       --button-bg: #007BFF;
       --button-text: #fff;
     }
-    /* 自动适配系统深色模式 */
     @media (prefers-color-scheme: dark) {
       :root {
         --bg-overlay: rgba(0,0,0,0.85);
@@ -190,7 +229,6 @@
         --button-text: #fff;
       }
     }
-    /* 手动浅色模式 */
     .theme-light {
       --bg-overlay: rgba(0,0,0,0.7);
       --modal-bg: #fff;
@@ -201,7 +239,6 @@
       --button-bg: #007BFF;
       --button-text: #fff;
     }
-    /* 手动深色模式 */
     .theme-dark {
       --bg-overlay: rgba(0,0,0,0.85);
       --modal-bg: #1e1e1e;
@@ -266,15 +303,38 @@
         cursor: pointer;
         font-size: 14px;
     }
-    .color-group {
-        margin-bottom: 30px;
+    .mode-toggle {
+        text-align: center;
+        margin: 10px 0;
     }
-    .group-title {
-        font-size: 20px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 5px;
+    .mode-toggle label {
+        margin: 0 10px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    .input-group {
+        margin: 10px 0;
+        text-align: center;
+    }
+    .input-group input {
+        width: 60%;
+        padding: 8px;
+        font-size: 16px;
+        background: var(--input-bg);
+        color: var(--input-text);
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        margin-bottom: 5px;
+    }
+    .input-group button {
+        padding: 8px 16px;
+        font-size: 16px;
+        margin: 5px 5px;
+        border: none;
+        border-radius: 5px;
+        background: var(--button-bg);
+        color: var(--button-text);
+        cursor: pointer;
     }
     .color-item {
         display: inline-block;
@@ -293,43 +353,22 @@
         margin-bottom: 5px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         cursor: pointer;
-    }
-    .toggle-container {
-        margin: 10px 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .toggle-container label {
-        margin-left: 5px;
-        font-size: 16px;
-    }
-    .close-button:hover,
-    .theme-toggle:hover {
-        opacity: 0.85;
-    }
-    .input-group {
-        margin: 10px 0;
-        text-align: center;
-    }
-    .input-group input {
-        width: 60%;
-        padding: 8px;
-        font-size: 16px;
-        background: var(--input-bg);
-        color: var(--input-text);
         border: 1px solid var(--border-color);
-        border-radius: 5px;
     }
-    .input-group button {
-        padding: 8px 16px;
-        font-size: 16px;
-        margin-left: 10px;
-        border: none;
-        border-radius: 5px;
-        background: var(--button-bg);
-        color: var(--button-text);
-        cursor: pointer;
+    .copy-tooltip {
+        pointer-events: none;
+        opacity: 0.9;
+    }
+    .error-message {
+        color: red;
+        font-size: 14px;
+        margin-top: 5px;
+        text-align: center;
+        animation: fadeIn 0.5s ease-in-out;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
     }
     .search-group {
         margin: 10px 0 20px 0;
@@ -344,12 +383,30 @@
         background: var(--input-bg);
         color: var(--input-text);
     }
-    .copy-tooltip {
-        pointer-events: none;
-        opacity: 0.9;
+    .color-group {
+        margin-bottom: 20px;
     }
-
-    /* 竖屏下：让列表居中 & 保持关闭/主题按钮定位 */
+    .group-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        cursor: pointer;
+    }
+    .group-title::before {
+        content: '▼ ';
+        font-size: 14px;
+    }
+    .group-title.collapsed::before {
+        content: '▶ ';
+    }
+    .color-list {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .color-list.hidden {
+        display: none;
+    }
     @media only screen and (orientation: portrait) {
       .preview-container, .content-container {
         text-align: center !important;
@@ -370,6 +427,7 @@
 
     // ========== 主题模式逻辑 ==========
     const themeModes = ["auto", "light", "dark"];
+    let currentMode = localStorage.getItem('tmColorPreviewTheme') || "auto";
 
     function updateTheme(modal, mode) {
         modal.classList.remove("theme-light", "theme-dark");
@@ -381,85 +439,198 @@
     }
 
     function createThemeToggleButton(modal) {
-        let currentMode = "auto";
-        const btn = createElement("button", "theme-toggle", "主题: 自动");
+        const btn = createElement("button", "theme-toggle", "");
+        btn.setAttribute("aria-label", "切换主题");
+        function refreshButtonText() {
+            btn.innerHTML = "主题: " + (currentMode === "auto" ? "自动" : (currentMode === "light" ? "浅色" : "深色"));
+        }
+        refreshButtonText();
+        updateTheme(modal, currentMode);
+
         btn.addEventListener('click', () => {
             const idx = themeModes.indexOf(currentMode);
             currentMode = themeModes[(idx + 1) % themeModes.length];
-            btn.innerHTML = "主题: " + (
-                currentMode === "auto" ? "自动" :
-                currentMode === "light" ? "浅色" : "深色"
-            );
+            refreshButtonText();
             updateTheme(modal, currentMode);
+            localStorage.setItem('tmColorPreviewTheme', currentMode);
         });
         modal.appendChild(btn);
     }
 
-    // ========== 调试16进制颜色预览UI ==========
+    // ========== 防抖函数 ==========
+    function debounce(func, delay) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    }
+
+    // ========== 复制文本函数 ==========
+    function copyText(text) {
+        if (typeof GM_setClipboard !== "undefined") {
+            try {
+                GM_setClipboard(text);
+                return Promise.resolve();
+            } catch (err) {
+                return Promise.reject(err);
+            }
+        } else if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('复制失败', err);
+            }
+            document.body.removeChild(textarea);
+            return Promise.resolve();
+        }
+    }
+
+    // ========== 颜色代码校验与扩展 ==========
+    function normalizeColorCode(code) {
+        code = code.trim().toUpperCase();
+        if (!code.startsWith("#")) {
+            code = "#" + code;
+        }
+        if (/^#[0-9A-F]{3}$/.test(code)) {
+            code = "#" + code.slice(1).split('').map(ch => ch + ch).join('');
+        }
+        return code;
+    }
+
+    function isValidColorCode(code) {
+        return /^#[0-9A-F]{6}([0-9A-F]{2})?$/.test(code);
+    }
+
+    // ========== 调试16进制颜色预览与调试UI ==========
     function showDebugColorUI() {
         const overlay = createElement('div', 'color-overlay');
+        overlay.setAttribute("role", "dialog");
         const modal = createElement('div', 'color-modal');
         overlay.appendChild(modal);
 
         createThemeToggleButton(modal);
 
         const closeBtn = createElement('button', 'close-button', '关闭');
+        closeBtn.setAttribute("aria-label", "关闭预览窗口");
         closeBtn.addEventListener('click', () => document.body.removeChild(overlay));
         modal.appendChild(closeBtn);
 
         const title = createElement('h2', '', '16进制颜色预览与调试');
         modal.appendChild(title);
 
-        const inputGroup = createElement('div', 'input-group');
-        const inputField = document.createElement('input');
-        inputField.type = 'text';
-        inputField.placeholder = '例如：#C7EDCC';
-        inputGroup.appendChild(inputField);
+        // ===== 预览模式切换 =====
+        const modeToggle = createElement('div', 'mode-toggle');
+        modeToggle.innerHTML = `
+            <label>
+                <input type="radio" name="previewMode" value="single" checked> 单色预览
+            </label>
+            <label>
+                <input type="radio" name="previewMode" value="dual"> 双色预览
+            </label>
+        `;
+        modal.appendChild(modeToggle);
 
+        // 容器：根据模式显示不同的输入区域
+        const inputContainer = createElement('div', 'input-container');
+        modal.appendChild(inputContainer);
+
+        // 单色输入组（默认显示）
+        const singleInputGroup = createElement('div', 'input-group');
+        const singleInput = document.createElement('input');
+        singleInput.type = 'text';
+        singleInput.placeholder = '#C7EDCC 或 #FFF';
+        singleInputGroup.appendChild(singleInput);
+        inputContainer.appendChild(singleInputGroup);
+
+        // 双色输入组（初始隐藏）
+        const dualInputGroup = createElement('div', 'input-group');
+        dualInputGroup.style.display = 'none';
+        const dualInput1 = document.createElement('input');
+        dualInput1.type = 'text';
+        dualInput1.placeholder = '#C7EDCC 或 #FFF';
+        dualInputGroup.appendChild(dualInput1);
+        const dualInput2 = document.createElement('input');
+        dualInput2.type = 'text';
+        dualInput2.placeholder = '#1E90FF 或 #00F';
+        dualInputGroup.appendChild(dualInput2);
+        inputContainer.appendChild(dualInputGroup);
+
+        // 生成预览、清空预览按钮区域
+        const btnGroup = createElement('div', 'input-group');
         const generateBtn = createElement('button', '', '生成预览');
-        inputGroup.appendChild(generateBtn);
-
+        generateBtn.setAttribute("aria-label", "生成颜色预览");
+        btnGroup.appendChild(generateBtn);
         const clearBtn = createElement('button', '', '清空预览');
-        inputGroup.appendChild(clearBtn);
+        clearBtn.setAttribute("aria-label", "清空颜色预览");
+        btnGroup.appendChild(clearBtn);
+        modal.appendChild(btnGroup);
 
-        modal.appendChild(inputGroup);
-
-        const toggleContainer = createElement('div', 'toggle-container');
-        const toggleInput = document.createElement('input');
-        toggleInput.type = 'checkbox';
-        toggleInput.checked = true;
-        toggleContainer.appendChild(toggleInput);
-        const toggleLabel = createElement('label', '', '显示颜色名称');
-        toggleContainer.appendChild(toggleLabel);
-        modal.appendChild(toggleContainer);
+        const errorMsg = createElement('div', 'error-message', '');
+        errorMsg.setAttribute("aria-live", "assertive");
+        modal.appendChild(errorMsg);
 
         const previewContainer = createElement('div', 'preview-container');
         previewContainer.style.textAlign = 'center';
         modal.appendChild(previewContainer);
 
+        // 预览模式切换事件
+        modeToggle.addEventListener('change', (e) => {
+            const mode = document.querySelector('input[name="previewMode"]:checked').value;
+            if (mode === 'single') {
+                singleInputGroup.style.display = '';
+                dualInputGroup.style.display = 'none';
+            } else {
+                singleInputGroup.style.display = 'none';
+                dualInputGroup.style.display = '';
+            }
+            errorMsg.innerHTML = '';
+            previewContainer.innerHTML = '';
+        });
+
+        // 支持输入框回车触发生成预览（分别对单色与双色）
+        singleInput.addEventListener('keydown', (e) => {
+            if (e.key === "Enter") {
+                generateBtn.click();
+            }
+        });
+        dualInput1.addEventListener('keydown', (e) => {
+            if (e.key === "Enter") {
+                generateBtn.click();
+            }
+        });
+        dualInput2.addEventListener('keydown', (e) => {
+            if (e.key === "Enter") {
+                generateBtn.click();
+            }
+        });
+
+        // 生成预览事件，根据当前预览模式处理
         generateBtn.addEventListener('click', () => {
             previewContainer.innerHTML = '';
-            const inputText = inputField.value.trim();
-            if (!inputText) return;
-            const codes = inputText.split(',').map(s => s.trim()).filter(s => s.length > 0);
-            const regex = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-            codes.forEach(origCode => {
-                let code = origCode;
-                if (!code.startsWith("#")) {
-                    code = "#" + code;
-                }
-                if (!regex.test(code)) {
-                    alert("无效的颜色代码: " + code);
+            errorMsg.innerHTML = '';
+            const mode = document.querySelector('input[name="previewMode"]:checked').value;
+            if (mode === 'single') {
+                const inputText = singleInput.value.trim();
+                if (!inputText) return;
+                let code = normalizeColorCode(inputText);
+                if (!isValidColorCode(code)) {
+                    errorMsg.innerHTML = "无效的颜色代码: " + inputText;
                     return;
                 }
-                code = code.toUpperCase();
-
                 const item = createElement('div', 'color-item');
                 const swatch = createElement('div', 'color-swatch', code);
                 swatch.style.backgroundColor = code;
-
                 swatch.addEventListener('click', () => {
-                    navigator.clipboard.writeText(code).then(() => {
+                    const existingTooltip = item.querySelector('.copy-tooltip');
+                    if (existingTooltip) { existingTooltip.remove(); }
+                    copyText(code).then(() => {
                         const tooltip = createElement('div', 'copy-tooltip', '已复制');
                         tooltip.style.position = 'absolute';
                         tooltip.style.backgroundColor = 'rgba(0,0,0,0.6)';
@@ -471,39 +642,137 @@
                         tooltip.style.left = '50%';
                         tooltip.style.transform = 'translateX(-50%)';
                         item.appendChild(tooltip);
-                        setTimeout(() => {
-                            item.removeChild(tooltip);
-                        }, 1000);
+                        setTimeout(() => { if(item.contains(tooltip)) item.removeChild(tooltip); }, 1000);
+                    }).catch(() => {
+                        const tooltip = createElement('div', 'copy-tooltip', '复制失败');
+                        tooltip.style.position = 'absolute';
+                        tooltip.style.backgroundColor = 'rgba(255,0,0,0.6)';
+                        tooltip.style.color = '#fff';
+                        tooltip.style.padding = '2px 5px';
+                        tooltip.style.borderRadius = '3px';
+                        tooltip.style.fontSize = '12px';
+                        tooltip.style.top = '0';
+                        tooltip.style.left = '50%';
+                        tooltip.style.transform = 'translateX(-50%)';
+                        item.appendChild(tooltip);
+                        setTimeout(() => { if(item.contains(tooltip)) item.removeChild(tooltip); }, 1000);
                     });
                 });
-
                 item.appendChild(swatch);
-
-                if (toggleInput.checked) {
-                    const nameDiv = createElement('div', '', colorMapping[code] || '未知颜色');
-                    item.appendChild(nameDiv);
-                }
-
+                const nameDiv = createElement('div', '', colorMapping[code] || '未知颜色');
+                item.appendChild(nameDiv);
                 previewContainer.appendChild(item);
-            });
+            } else { // dual 模式
+                const code1 = normalizeColorCode(dualInput1.value.trim());
+                const code2 = normalizeColorCode(dualInput2.value.trim());
+                let invalid = [];
+                if (!isValidColorCode(code1)) { invalid.push(dualInput1.value.trim()); }
+                if (!isValidColorCode(code2)) { invalid.push(dualInput2.value.trim()); }
+                if (invalid.length > 0) {
+                    errorMsg.innerHTML = "无效的颜色代码: " + invalid.join(', ');
+                    return;
+                }
+                // 预览颜色1
+                const item1 = createElement('div', 'color-item');
+                const swatch1 = createElement('div', 'color-swatch', code1);
+                swatch1.style.backgroundColor = code1;
+                swatch1.addEventListener('click', () => {
+                    const existingTooltip = item1.querySelector('.copy-tooltip');
+                    if (existingTooltip) { existingTooltip.remove(); }
+                    copyText(code1).then(() => {
+                        const tooltip = createElement('div', 'copy-tooltip', '已复制');
+                        tooltip.style.position = 'absolute';
+                        tooltip.style.backgroundColor = 'rgba(0,0,0,0.6)';
+                        tooltip.style.color = '#fff';
+                        tooltip.style.padding = '2px 5px';
+                        tooltip.style.borderRadius = '3px';
+                        tooltip.style.fontSize = '12px';
+                        tooltip.style.top = '0';
+                        tooltip.style.left = '50%';
+                        tooltip.style.transform = 'translateX(-50%)';
+                        item1.appendChild(tooltip);
+                        setTimeout(() => { if(item1.contains(tooltip)) item1.removeChild(tooltip); }, 1000);
+                    }).catch(() => {
+                        const tooltip = createElement('div', 'copy-tooltip', '复制失败');
+                        tooltip.style.position = 'absolute';
+                        tooltip.style.backgroundColor = 'rgba(255,0,0,0.6)';
+                        tooltip.style.color = '#fff';
+                        tooltip.style.padding = '2px 5px';
+                        tooltip.style.borderRadius = '3px';
+                        tooltip.style.fontSize = '12px';
+                        tooltip.style.top = '0';
+                        tooltip.style.left = '50%';
+                        tooltip.style.transform = 'translateX(-50%)';
+                        item1.appendChild(tooltip);
+                        setTimeout(() => { if(item1.contains(tooltip)) item1.removeChild(tooltip); }, 1000);
+                    });
+                });
+                item1.appendChild(swatch1);
+                const nameDiv1 = createElement('div', '', colorMapping[code1] || '未知颜色');
+                item1.appendChild(nameDiv1);
+                previewContainer.appendChild(item1);
+
+                // 预览颜色2
+                const item2 = createElement('div', 'color-item');
+                const swatch2 = createElement('div', 'color-swatch', code2);
+                swatch2.style.backgroundColor = code2;
+                swatch2.addEventListener('click', () => {
+                    const existingTooltip = item2.querySelector('.copy-tooltip');
+                    if (existingTooltip) { existingTooltip.remove(); }
+                    copyText(code2).then(() => {
+                        const tooltip = createElement('div', 'copy-tooltip', '已复制');
+                        tooltip.style.position = 'absolute';
+                        tooltip.style.backgroundColor = 'rgba(0,0,0,0.6)';
+                        tooltip.style.color = '#fff';
+                        tooltip.style.padding = '2px 5px';
+                        tooltip.style.borderRadius = '3px';
+                        tooltip.style.fontSize = '12px';
+                        tooltip.style.top = '0';
+                        tooltip.style.left = '50%';
+                        tooltip.style.transform = 'translateX(-50%)';
+                        item2.appendChild(tooltip);
+                        setTimeout(() => { if(item2.contains(tooltip)) item2.removeChild(tooltip); }, 1000);
+                    }).catch(() => {
+                        const tooltip = createElement('div', 'copy-tooltip', '复制失败');
+                        tooltip.style.position = 'absolute';
+                        tooltip.style.backgroundColor = 'rgba(255,0,0,0.6)';
+                        tooltip.style.color = '#fff';
+                        tooltip.style.padding = '2px 5px';
+                        tooltip.style.borderRadius = '3px';
+                        tooltip.style.fontSize = '12px';
+                        tooltip.style.top = '0';
+                        tooltip.style.left = '50%';
+                        tooltip.style.transform = 'translateX(-50%)';
+                        item2.appendChild(tooltip);
+                        setTimeout(() => { if(item2.contains(tooltip)) item2.removeChild(tooltip); }, 1000);
+                    });
+                });
+                item2.appendChild(swatch2);
+                const nameDiv2 = createElement('div', '', colorMapping[code2] || '未知颜色');
+                item2.appendChild(nameDiv2);
+                previewContainer.appendChild(item2);
+            }
         });
 
-        clearBtn.addEventListener('click', () => {
-            previewContainer.innerHTML = '';
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") { document.body.removeChild(overlay); }
         });
-
+        overlay.tabIndex = 0;
+        overlay.focus();
         document.body.appendChild(overlay);
     }
 
     // ========== 16进制颜色大全展示UI ==========
     function showColorCollectionUI() {
         const overlay = createElement('div', 'color-overlay');
+        overlay.setAttribute("role", "dialog");
         const modal = createElement('div', 'color-modal');
         overlay.appendChild(modal);
 
         createThemeToggleButton(modal);
 
         const closeBtn = createElement('button', 'close-button', '关闭');
+        closeBtn.setAttribute("aria-label", "关闭颜色展示窗口");
         closeBtn.addEventListener('click', () => document.body.removeChild(overlay));
         modal.appendChild(closeBtn);
 
@@ -526,17 +795,29 @@
                 const filteredColors = group.colors.filter(item => {
                     const searchTerm = searchInput.value.trim().toLowerCase();
                     if (!searchTerm) return true;
-                    return (
-                        item.code.toLowerCase().includes(searchTerm) ||
-                        item.name.toLowerCase().includes(searchTerm)
-                    );
+                    if (searchTerm.startsWith('#')) {
+                        return item.code.toLowerCase().startsWith(searchTerm);
+                    } else if (searchTerm.endsWith('*')) {
+                        return item.name.toLowerCase().startsWith(searchTerm.slice(0, -1));
+                    } else {
+                        return (
+                            item.code.toLowerCase().includes(searchTerm) ||
+                            item.name.toLowerCase().includes(searchTerm)
+                        );
+                    }
                 });
                 if (filteredColors.length === 0) return;
 
                 const groupDiv = createElement('div', 'color-group');
                 const groupTitle = createElement('div', 'group-title', group.group);
+                groupTitle.addEventListener('click', () => {
+                    groupTitle.classList.toggle('collapsed');
+                    const colorList = groupDiv.querySelector('.color-list');
+                    colorList.classList.toggle('hidden');
+                });
                 groupDiv.appendChild(groupTitle);
 
+                const colorList = createElement('div', 'color-list');
                 filteredColors.forEach(item => {
                     const colorItem = createElement('div', 'color-item');
                     const swatch = createElement('div', 'color-swatch', item.code);
@@ -549,16 +830,22 @@
                     const nameDiv = createElement('div', '', item.name);
                     colorItem.appendChild(nameDiv);
 
-                    groupDiv.appendChild(colorItem);
+                    colorList.appendChild(colorItem);
                 });
+                groupDiv.appendChild(colorList);
 
                 contentContainer.appendChild(groupDiv);
             });
         }
 
+        searchInput.addEventListener('input', debounce(renderGroups, 300));
         renderGroups();
-        searchInput.addEventListener('input', renderGroups);
 
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") { document.body.removeChild(overlay); }
+        });
+        overlay.tabIndex = 0;
+        overlay.focus();
         document.body.appendChild(overlay);
     }
 
