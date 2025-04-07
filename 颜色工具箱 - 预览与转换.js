@@ -1,20 +1,20 @@
 // ==UserScript==
-// @name          16进制颜色预览与查询工具
-// @namespace     https://viayoo.com/
-// @version       2.7.3.1
-// @description   提供16进制颜色预览、调试及全网常见颜色展示。支持单色和双色预览，颜色按分组排序。
-// @author        是小白呀
-// @match         *://*/*
-// @license       MIT
-// @grant         GM_registerMenuCommand
-// @grant         GM_setClipboard
-// @run-at        document-end
+// @name         颜色工具箱 - 预览与转换
+// @namespace    https://viayoo.com/
+// @version      3.0.1
+// @description  提供16进制颜色预览、调试及全网常见颜色展示。支持单色和双色预览，颜色按分组排序，并新增颜色格式转换功能。
+// @author       是小白呀 & ChatGPT & Grok
+// @match        *://*/*
+// @license      MIT
+// @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
+// @run-at       document-end
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // ========== 颜色分组数据 ==========
+    // ========== 颜色分组数据（调整棕色位置） ==========
     const colorGroups = [
         {
             group: "红色 🔴",
@@ -70,6 +70,16 @@
                 { code: "#FFDAB9", name: "桃色" },
                 { code: "#FADA5E", name: "玉米黄" },
                 { code: "#FFDB58", name: "芥末黄" }
+            ]
+        },
+        {
+            group: "棕色系 🟤",
+            colors: [
+                { code: "#A52A2A", name: "棕色" },
+                { code: "#8B4513", name: "马鞍棕" },
+                { code: "#D2691E", name: "巧克力棕" },
+                { code: "#CD853F", name: "秘鲁棕" },
+                { code: "#DEB887", name: "陶土棕" }
             ]
         },
         {
@@ -137,7 +147,7 @@
                 { code: "#4B0082", name: "靛蓝" },
                 { code: "#BA55D3", name: "中兰花紫" },
                 { code: "#D8BFD8", name: "蓟色" },
-                { code: "#E6E6FA", name: "薰衣草紫" } // 新增
+                { code: "#E6E6FA", name: "薰衣草紫" }
             ]
         },
         {
@@ -159,16 +169,6 @@
                 { code: "#00000080", name: "半透明黑" },
                 { code: "#FF000080", name: "半透明红" },
                 { code: "#00FF0080", name: "半透明绿" }
-            ]
-        },
-        {
-            group: "棕色系 🟤",
-            colors: [
-                { code: "#A52A2A", name: "棕色" },
-                { code: "#8B4513", name: "马鞍棕" },
-                { code: "#D2691E", name: "巧克力棕" },
-                { code: "#CD853F", name: "秘鲁棕" },
-                { code: "#DEB887", name: "陶土棕" }
             ]
         }
     ];
@@ -406,6 +406,51 @@
     }
     .color-list.hidden {
         display: none;
+    }
+    .converter-group {
+        margin: 20px 0;
+        text-align: center;
+    }
+    .converter-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 16px;
+    }
+    .converter-group input, .converter-group select {
+        width: 80%;
+        padding: 8px;
+        font-size: 16px;
+        background: var(--input-bg);
+        color: var(--input-text);
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .converter-group button {
+        padding: 8px 16px;
+        font-size: 16px;
+        border: none;
+        border-radius: 5px;
+        background: var(--button-bg);
+        color: var(--button-text);
+        cursor: pointer;
+    }
+    .converter-result {
+        margin-top: 15px;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        background: var(--input-bg);
+        color: var(--input-text);
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .converter-preview {
+        margin-top: 10px;
+        height: 50px;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
     }
     @media only screen and (orientation: portrait) {
       .preview-container, .content-container {
@@ -849,10 +894,233 @@
         document.body.appendChild(overlay);
     }
 
+    // ========== 颜色格式转换UI ==========
+    function showColorConverterUI() {
+        const overlay = createElement('div', 'color-overlay');
+        overlay.setAttribute("role", "dialog");
+        const modal = createElement('div', 'color-modal');
+        overlay.appendChild(modal);
+
+        createThemeToggleButton(modal);
+
+        const closeBtn = createElement('button', 'close-button', '关闭');
+        closeBtn.setAttribute("aria-label", "关闭转换工具");
+        closeBtn.addEventListener('click', () => document.body.removeChild(overlay));
+        modal.appendChild(closeBtn);
+
+        const title = createElement('h2', '', '颜色格式转换工具');
+        modal.appendChild(title);
+
+        const converterGroup = createElement('div', 'converter-group');
+        
+        // 输入颜色值的标签与输入框
+        const labelInput = createElement('label', '', '输入颜色值：');
+        converterGroup.appendChild(labelInput);
+        const colorInput = document.createElement('input');
+        colorInput.placeholder = "例如：#FF5733 或 rgb(255,87,51) 或 hsl(9,100%,60%)";
+        converterGroup.appendChild(colorInput);
+
+        // 错误提示
+        const errorDiv = createElement('div', 'error-message', '');
+        converterGroup.appendChild(errorDiv);
+
+        // 选择输入格式
+        const labelFormat = createElement('label', '', '选择输入格式：');
+        converterGroup.appendChild(labelFormat);
+        const formatSelect = document.createElement('select');
+        const formats = ["HEX", "RGB", "HSL"];
+        formats.forEach(fmt => {
+            const opt = document.createElement('option');
+            opt.value = fmt;
+            opt.textContent = fmt;
+            formatSelect.appendChild(opt);
+        });
+        converterGroup.appendChild(formatSelect);
+
+        // 转换按钮
+        const convertBtn = createElement('button', '', '转换');
+        converterGroup.appendChild(convertBtn);
+
+        // 结果展示区域
+        const resultDiv = createElement('div', 'converter-result', '');
+        converterGroup.appendChild(resultDiv);
+
+        // 颜色预览区域
+        const previewDiv = createElement('div', 'converter-preview');
+        converterGroup.appendChild(previewDiv);
+
+        modal.appendChild(converterGroup);
+
+        // 实时输入验证
+        colorInput.addEventListener("input", () => {
+            const input = colorInput.value.trim();
+            const format = formatSelect.value;
+            errorDiv.style.display = "none";
+            if (!input) return;
+
+            try {
+                if (format === "HEX") {
+                    normalizeHex(input);
+                } else if (format === "RGB") {
+                    parseRGB(input);
+                } else if (format === "HSL") {
+                    parseHSL(input);
+                }
+            } catch (e) {
+                errorDiv.textContent = e.message || "无效的输入格式，请检查！";
+                errorDiv.style.display = "block";
+            }
+        });
+
+        // 绑定转换事件
+        convertBtn.addEventListener("click", () => {
+            const input = colorInput.value.trim();
+            const format = formatSelect.value;
+            errorDiv.style.display = "none";
+            if (!input) {
+                errorDiv.textContent = "请输入颜色值！";
+                errorDiv.style.display = "block";
+                return;
+            }
+            try {
+                let rgb, hex, hsl;
+                if (format === "HEX") {
+                    hex = normalizeHex(input);
+                    rgb = hexToRgb(hex);
+                    hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+                } else if (format === "RGB") {
+                    rgb = parseRGB(input);
+                    hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+                    hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+                } else if (format === "HSL") {
+                    hsl = parseHSL(input);
+                    rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
+                    hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+                }
+                resultDiv.textContent = `HEX: ${hex}\nRGB: rgb(${rgb.r}, ${rgb.g}, ${rgb.b})\nHSL: hsl(${hsl.h}, ${hsl.s}%, ${hsl.l}%)`;
+                previewDiv.style.backgroundColor = hex;
+            } catch (e) {
+                errorDiv.textContent = e.message || "转换出错，请检查输入格式！";
+                errorDiv.style.display = "block";
+                resultDiv.textContent = "";
+                previewDiv.style.backgroundColor = "#fff";
+            }
+        });
+
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") { document.body.removeChild(overlay); }
+        });
+        overlay.tabIndex = 0;
+        overlay.focus();
+        document.body.appendChild(overlay);
+    }
+
+    // ========== 辅助函数（颜色转换） ==========
+    function normalizeHex(code) {
+        code = code.toUpperCase().trim();
+        if (!code.startsWith("#")) {
+            code = "#" + code;
+        }
+        if (/^#[0-9A-F]{3}$/i.test(code)) {
+            code = "#" + code.slice(1).split('').map(ch => ch + ch).join('');
+        }
+        if (!/^#[0-9A-F]{6}$/i.test(code)) {
+            throw new Error("无效的HEX格式，必须是3或6位十六进制数（如#FFF或#FFFFFF）");
+        }
+        return code;
+    }
+
+    function parseRGB(str) {
+        const match = str.match(/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+)?\s*\)/i);
+        if (!match) {
+            throw new Error("无效的RGB格式，必须是rgb(r,g,b)或rgba(r,g,b,a)形式");
+        }
+        const [r, g, b] = match.slice(1, 4).map(Number);
+        if (r > 255 || g > 255 || b > 255) {
+            throw new Error("RGB值必须在0-255之间！");
+        }
+        return { r, g, b };
+    }
+
+    function parseHSL(str) {
+        const match = str.match(/hsl\(\s*(\d{1,3})\s*,\s*(\d{1,3})%?\s*,\s*(\d{1,3})%?\s*\)/i);
+        if (!match) {
+            throw new Error("无效的HSL格式，必须是hsl(h,s%,l%)形式");
+        }
+        const h = parseInt(match[1]);
+        const s = parseInt(match[2]);
+        const l = parseInt(match[3]);
+        if (h > 360 || s > 100 || l > 100) {
+            throw new Error("HSL值范围错误：色调0-360，饱和度和亮度0-100！");
+        }
+        return { h, s, l };
+    }
+
+    function hexToRgb(hex) {
+        hex = hex.replace(/^#/, '');
+        const bigint = parseInt(hex, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return { r, g, b };
+    }
+
+    function rgbToHex(r, g, b) {
+        return "#" + [r, g, b].map(x => {
+            const hex = x.toString(16);
+            return hex.length === 1 ? "0" + hex : hex;
+        }).join('').toUpperCase();
+    }
+
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) {
+            h = s = 0; // 无色
+        } else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) {
+                h = (g - b) / d + (g < b ? 6 : 0);
+            } else if (max === g) {
+                h = (b - r) / d + 2;
+            } else {
+                h = (r - g) / d + 4;
+            }
+            h /= 6;
+        }
+        return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
+
+    function hslToRgb(h, s, l) {
+        h /= 360; s /= 100; l /= 100;
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l; // 无色
+        } else {
+            const hue2rgb = function(p, q, t) {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+    }
+
     // ========== 注册油猴菜单 ==========
     if (typeof GM_registerMenuCommand !== "undefined") {
         GM_registerMenuCommand("16进制颜色预览与调试", showDebugColorUI);
         GM_registerMenuCommand("16进制颜色大全展示", showColorCollectionUI);
+        GM_registerMenuCommand("颜色格式转换", showColorConverterUI);
     } else {
         console.error("GM_registerMenuCommand 不可用。");
     }
